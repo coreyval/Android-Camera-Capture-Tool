@@ -253,6 +253,13 @@ def connect_wirelessly():
     except Exception as e:
         messagebox.showerror("Wireless Error", f"❌ Failed to connect wirelessly:\n{e}")
 
+# ---------- Applications ----------
+def open_camera_app():
+    try:
+        subprocess.run(["adb", "shell", "am", "start", "-n", "com.sec.android.app.camera/.Camera"])
+    except Exception as e:
+        messagebox.showerror("Camera Error", f"Failed to open camera: {e}")
+
 
 # ---------- GUI Setup ----------
 initial_files = list_photos()
@@ -268,6 +275,7 @@ button_frame.pack(expand=True)
 
 # Define buttons and their grid positions
 buttons = [
+    ("📱 Open Camera App", open_camera_app),
     ("📸 Take Photo", take_photo),
     ("✅ Finish & Preview", finish_session),
     ("👁️ Standard View", start_standard_view),
