@@ -232,12 +232,33 @@ def choose_save_directory():
         SAVE_DIR = selected_dir
         messagebox.showinfo("Folder Set", f"📂 Photos will now be saved to:\n{SAVE_DIR}")
 
+# ---------- System Config ----------
+def connect_wirelessly():
+    confirm = messagebox.askyesno(
+        "USB Connection Required",
+        "⚠️ Your phone must be plugged in via USB first to enable wireless ADB and connected to the same network.\n\nContinue?"
+    )
+    if not confirm:
+        return
+
+    try:
+        ip_output = subprocess.check_output(["adb", "shell", "ip", "route"], text=True)
+        ip_address = ip_output.split("src")[-1].strip().split()[0]
+
+        subprocess.run(["adb", "tcpip", "5555"], check=True)
+        time.sleep(1)
+
+        subprocess.run(["adb", "connect", ip_address], check=True)
+        messagebox.showinfo("Connected", f"📡 Connected wirelessly to {ip_address}")
+    except Exception as e:
+        messagebox.showerror("Wireless Error", f"❌ Failed to connect wirelessly:\n{e}")
+
 
 # ---------- GUI Setup ----------
 initial_files = list_photos()
 root = tk.Tk()
 root.title("Samsung Camera Capture Tool")
-root.geometry("300x400")
+root.geometry("300x450")
 root.attributes('-topmost', True)  # Always on top
 root.protocol("WM_DELETE_WINDOW", quit_app)
 
@@ -261,5 +282,9 @@ folder_btn.pack(pady=10)
 
 pull_photos_button = tk.Button(root, text="📷 Pull All Photos", command=pull_photos_from_phone)
 pull_photos_button.pack(pady=10)
+
+wifi_btn = tk.Button(root, text="📡 Connect Wirelessly", command=connect_wirelessly, height=2, width=20)
+wifi_btn.pack(pady=10)
+
 
 root.mainloop()
