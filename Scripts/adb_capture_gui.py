@@ -93,6 +93,27 @@ def pull_latest_photo():
         print(f"⚠️ Failed to pull photo: {e}")
         return None
 
+def pull_photos_from_phone():
+    if not SAVE_DIR:
+        messagebox.showerror("Error", "Please select a save location first.")
+        return
+
+    timestamp = time.strftime("PhoneDump_%Y-%m-%d_%H-%M-%S")
+    full_path = os.path.join(SAVE_DIR, timestamp)
+    os.makedirs(full_path, exist_ok=True)
+
+    src = "/sdcard/Pictures"
+    dst = os.path.join(full_path, "Pictures")
+    os.makedirs(dst, exist_ok=True)
+
+    result = subprocess.run(["adb", "pull", src, dst], capture_output=True, text=True)
+    if result.returncode != 0:
+        messagebox.showerror("Error", f"Failed to pull photos:\n{result.stderr}")
+        return
+
+    messagebox.showinfo("Success", f"Photos pulled to:\n{dst}")
+
+
 # ---------- Image Processing ----------
 def auto_rotate_image(path):
     try:
@@ -216,7 +237,7 @@ def choose_save_directory():
 initial_files = list_photos()
 root = tk.Tk()
 root.title("Samsung Camera Capture Tool")
-root.geometry("300x360")
+root.geometry("300x400")
 root.attributes('-topmost', True)  # Always on top
 root.protocol("WM_DELETE_WINDOW", quit_app)
 
@@ -238,5 +259,7 @@ adv_view_btn.pack(pady=10)
 folder_btn = tk.Button(root, text="📂 Set Save Folder", command=choose_save_directory, height=2, width=20)
 folder_btn.pack(pady=10)
 
+pull_photos_button = tk.Button(root, text="📷 Pull All Photos", command=pull_photos_from_phone)
+pull_photos_button.pack(pady=10)
 
 root.mainloop()
