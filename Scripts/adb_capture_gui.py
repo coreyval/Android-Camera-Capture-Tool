@@ -77,21 +77,24 @@ def launch_camera_and_snap():
     except Exception as e:
         messagebox.showerror("Camera Error", f"Failed to trigger camera: {e}")
 
-def pull_latest_photo():
+def pull_latest_photo(retries=5, delay=0.5):
     try:
-        current_files = list_photos()
-        new_files = [f for f in current_files if f not in initial_files]
-        if not new_files:
-            print("❌ No new photo found.")
-            return None
-        latest_photo = new_files[0]
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        local_path = os.path.join(SAVE_DIR, f"{timestamp}_{latest_photo}")
-        subprocess.run(["adb", "pull", f"/sdcard/DCIM/Camera/{latest_photo}", local_path])
-        return local_path
+        for attempt in range(retries):
+            current_files = list_photos()
+            new_files = [f for f in current_files if f not in initial_files]
+            if new_files:
+                latest_photo = new_files[0]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                local_path = os.path.join(SAVE_DIR, f"{timestamp}_{latest_photo}")
+                subprocess.run(["adb", "pull", f"/sdcard/DCIM/Camera/{latest_photo}", local_path])
+                return local_path
+            time.sleep(delay)  # wait and try again
+        print("❌ No new photo found after retrying.")
+        return None
     except Exception as e:
         print(f"⚠️ Failed to pull photo: {e}")
         return None
+
 
 def pull_photos_from_phone():
     if not SAVE_DIR:
@@ -102,8 +105,8 @@ def pull_photos_from_phone():
     full_path = os.path.join(SAVE_DIR, timestamp)
     os.makedirs(full_path, exist_ok=True)
 
-    src = "/sdcard/Pictures"
-    dst = os.path.join(full_path, "Pictures")
+    src = "/sdcard/DCIM/Camera"
+    dst = os.path.join(full_path, "Camera")
     os.makedirs(dst, exist_ok=True)
 
     result = subprocess.run(["adb", "pull", src, dst], capture_output=True, text=True)
