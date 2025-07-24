@@ -35,7 +35,7 @@ def start_standard_view():
             "scrcpy",
             "--stay-awake",
             "--max-size", "800",
-            "--max-fps", "30",
+            # "--max-fps", "30",
             "--crop", "1080:1080:0:885",
             "--window-width", "600",
             "--window-height", "600",
