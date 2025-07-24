@@ -262,29 +262,28 @@ root.geometry("300x450")
 root.attributes('-topmost', True)  # Always on top
 root.protocol("WM_DELETE_WINDOW", quit_app)
 
-btn_quit = tk.Button(root, text="❎ Quit App", command=quit_app, height=1, width=20)
-btn_quit.pack(pady=5)
+# Frame for the buttons in grid layout
+button_frame = tk.Frame(root)
+button_frame.pack(expand=True)
 
-take_btn = tk.Button(root, text="📸 Take Photo", command=take_photo, height=2, width=20)
-take_btn.pack(pady=10)
+# Define buttons and their grid positions
+buttons = [
+    ("📸 Take Photo", take_photo),
+    ("✅ Finish & Preview", finish_session),
+    ("👁️ Standard View", start_standard_view),
+    ("🔎 Advanced View", start_advanced_view),
+    ("📂 Set Save Folder", choose_save_directory),
+    ("📷 Pull All Photos", pull_photos_from_phone),
+    ("📡 Connect Wirelessly", connect_wirelessly),
+    ("❎ Quit App", quit_app),
+]
 
-done_btn = tk.Button(root, text="✅ Finish & Preview", command=finish_session, height=2, width=20)
-done_btn.pack(pady=10)
-
-std_view_btn = tk.Button(root, text="👁️ Standard View", command=start_standard_view, height=2, width=20)
-std_view_btn.pack(pady=10)
-
-adv_view_btn = tk.Button(root, text="🔎 Advanced View", command=start_advanced_view, height=2, width=20)
-adv_view_btn.pack(pady=10)
-
-folder_btn = tk.Button(root, text="📂 Set Save Folder", command=choose_save_directory, height=2, width=20)
-folder_btn.pack(pady=10)
-
-pull_photos_button = tk.Button(root, text="📷 Pull All Photos", command=pull_photos_from_phone)
-pull_photos_button.pack(pady=10)
-
-wifi_btn = tk.Button(root, text="📡 Connect Wirelessly", command=connect_wirelessly, height=2, width=20)
-wifi_btn.pack(pady=10)
+# Place buttons in two columns
+for i, (text, cmd) in enumerate(buttons):
+    row = i // 2
+    col = i % 2
+    btn = tk.Button(button_frame, text=text, command=cmd, height=2, width=16)
+    btn.grid(row=row, column=col, padx=5, pady=5)
 
 
 root.mainloop()
