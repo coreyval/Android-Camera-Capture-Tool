@@ -227,7 +227,7 @@ def connect_wirelessly():
         return
 
     try:
-        ip_output = subprocess.check_output(["adb", "shell", "ip", "route"], text=True)
+        ip_output = subprocess.check_output([tool_path("adb.exe"), "shell", "ip", "route"], text=True)
         ip_address = ip_output.split("src")[-1].strip().split()[0]
 
         subprocess.run([tool_path("adb.exe"), "tcpip", "5555"], check=True)

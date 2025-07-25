@@ -5,7 +5,7 @@ a = Analysis(
     ['adb_capture_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('tools', 'tools'), ('captures', 'dist/captures')],
+    datas=[('tools', 'tools'), ('captures', 'captures')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
