@@ -41,9 +41,12 @@ def tool_path(filename):
 
 def start_standard_view():
     try:
-        subprocess.Popen(["scrcpy", "--stay-awake"])
+        subprocess.Popen([tool_path("scrcpy.exe"), "--stay-awake"])
     except FileNotFoundError:
-        messagebox.showerror("scrcpy Not Found", "Please install scrcpy and ensure it's on your PATH.")
+        messagebox.showerror(
+            title="scrcpy Not Found",
+            message="Please install scrcpy and ensure it's on your PATH."
+        )
 
 # ---------- ADB ----------
 def run_adb(cmd):
