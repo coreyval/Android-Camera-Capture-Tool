@@ -8,154 +8,92 @@ import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog
 import numpy as np
 import threading
-import signal
 import sys
 
 SAVE_DIR = os.path.abspath("./captures")
 os.makedirs(SAVE_DIR, exist_ok=True)
-captured_photos = []
-initial_files = []
+TEMP_VIEW_DIR = os.path.join(SAVE_DIR, "temp_view")
+os.makedirs(TEMP_VIEW_DIR, exist_ok=True)
 
-# Gracefully quit application
+# ---------- GUI Root ----------
+root = tk.Tk()
+root.title("Samsung Camera Tool")
+root.geometry("300x500")
+root.attributes('-topmost', True)
+
+
+
+# ---------- Quit ----------
 def quit_app():
     if messagebox.askokcancel("Quit", "Do you want to quit the application?"):
         try:
-            # Kill all scrcpy instances
             subprocess.run(["taskkill", "/f", "/im", "scrcpy.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             print(f"⚠️ Could not kill scrcpy: {e}")
         root.destroy()
         sys.exit(0)
-
+root.protocol("WM_DELETE_WINDOW", quit_app)
 
 # ---------- SCRCPY ----------
+def tool_path(filename):
+    base = getattr(sys, '_MEIPASS', os.path.abspath('.'))
+    return os.path.join(base, "tools", filename)
+
 def start_standard_view():
     try:
-        subprocess.Popen([
-            "scrcpy",
-            "--stay-awake",
-            "--max-size", "800",
-            # "--max-fps", "30",
-            "--crop", "1080:1080:0:885",
-            "--window-width", "600",
-            "--window-height", "600",
-        ])
+        subprocess.Popen(["scrcpy", "--stay-awake"])
     except FileNotFoundError:
-        messagebox.showerror("scrcpy Not Found",
-            "Please install scrcpy and ensure it's on your PATH.")
+        messagebox.showerror("scrcpy Not Found", "Please install scrcpy and ensure it's on your PATH.")
 
-def start_advanced_view():
-    try:
-        subprocess.Popen([
-            "scrcpy",
-            "--stay-awake",
-            "--max-size", "800",
-            "--max-fps", "60",
-            "--crop", "1080:1800:0:500",
-            "--window-width", "1200",
-            "--window-height", "600",
-        ])
-    except FileNotFoundError:
-        messagebox.showerror("scrcpy Not Found",
-            "Please install scrcpy and ensure it's on your PATH.")
-
-# ---------- ADB Utilities ----------
+# ---------- ADB ----------
 def run_adb(cmd):
-    result = subprocess.run(["adb", "shell"] + cmd, capture_output=True, text=True)
+    result = subprocess.run([tool_path("adb.exe"), "shell"] + cmd, capture_output=True, text=True)
     return result.stdout.strip()
 
 def list_photos():
     output = run_adb(["ls", "-t", "/sdcard/DCIM/Camera"])
     return output.splitlines()
 
-def launch_camera_and_snap():
+def pull_photo(file_name, local_dir):
+    local_path = os.path.join(local_dir, file_name)
+    subprocess.run([tool_path("adb.exe"), "pull", f"/sdcard/DCIM/Camera/{file_name}", local_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return local_path
+
+def launch_camera_app():
     try:
-        subprocess.run(["adb", "shell", "am", "start", "-n", "com.sec.android.app.camera/.Camera"])
-        time.sleep(0.002)
-        subprocess.run(["adb", "shell", "input", "keyevent", "27"])
-        time.sleep(0.002)
+        subprocess.run([tool_path("adb.exe"), "shell", "am", "start", "-n", "com.sec.android.app.camera/.Camera"])
     except Exception as e:
-        messagebox.showerror("Camera Error", f"Failed to trigger camera: {e}")
+        messagebox.showerror("Camera Error", f"Failed to open camera: {e}")
 
-def pull_latest_photo(retries=5, delay=0.5):
+def trigger_camera():
     try:
-        for attempt in range(retries):
-            current_files = list_photos()
-            new_files = [f for f in current_files if f not in initial_files]
-            if new_files:
-                latest_photo = new_files[0]
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                local_path = os.path.join(SAVE_DIR, f"{timestamp}_{latest_photo}")
-                subprocess.run(["adb", "pull", f"/sdcard/DCIM/Camera/{latest_photo}", local_path])
-                return local_path
-            time.sleep(delay)  # wait and try again
-        print("❌ No new photo found after retrying.")
-        return None
+        subprocess.run([tool_path("adb.exe"), "shell", "input", "keyevent", "27"])
     except Exception as e:
-        print(f"⚠️ Failed to pull photo: {e}")
-        return None
+        messagebox.showerror("Capture Error", f"Failed to capture photo: {e}")
 
+def pull_all_photos():
+    photos = list_photos()
+    if not photos:
+        messagebox.showinfo("No Photos", "No photos found on the device.")
+        return []
 
-def pull_photos_from_phone():
-    if not SAVE_DIR:
-        messagebox.showerror("Error", "Please select a save location first.")
-        return
+    os.makedirs(TEMP_VIEW_DIR, exist_ok=True)
+    for file in photos:
+        pull_photo(file, TEMP_VIEW_DIR)
+    return [os.path.join(TEMP_VIEW_DIR, f) for f in photos if os.path.exists(os.path.join(TEMP_VIEW_DIR, f))]
 
-    timestamp = time.strftime("PhoneDump_%Y-%m-%d_%H-%M-%S")
-    full_path = os.path.join(SAVE_DIR, timestamp)
-    os.makedirs(full_path, exist_ok=True)
-
-    src = "/sdcard/DCIM/Camera"
-    dst = os.path.join(full_path, "Camera")
-    os.makedirs(dst, exist_ok=True)
-
-    result = subprocess.run(["adb", "pull", src, dst], capture_output=True, text=True)
-    if result.returncode != 0:
-        messagebox.showerror("Error", f"Failed to pull photos:\n{result.stderr}")
-        return
-
-    messagebox.showinfo("Success", f"Photos pulled to:\n{dst}")
-
-
-# ---------- Image Processing ----------
-def auto_rotate_image(path):
-    try:
-        image = Image.open(path)
-        for orientation in ExifTags.TAGS.keys():
-            if ExifTags.TAGS[orientation] == 'Orientation':
-                break
-        exif = image._getexif()
-        if exif is not None:
-            orientation = exif.get(orientation)
-            if orientation == 3:
-                image = image.rotate(180, expand=True)
-            elif orientation == 6:
-                image = image.rotate(270, expand=True)
-            elif orientation == 8:
-                image = image.rotate(90, expand=True)
-        image.save(path)
-        print("🎠 Auto-rotated and overwritten.")
-    except Exception as e:
-        print(f"⚠️ Auto-rotation failed: {e}")
-
-def process_image(path):
-    auto_rotate_image(path)
-    try:
-        img = cv2.imread(path)
-        if img is not None:
-            cv2.imwrite(path, img)
-    except Exception as e:
-        print(f"⚠️ Processing failed: {e}")
-
-# ---------- Carousel Preview ----------
+# ---------- Image Viewer ----------
 def preview_carousel(images):
     if not images:
         return
 
     idx = [0]
+    selected_photos = []
 
     def update_image():
         img_bgr = cv2.imread(images[idx[0]])
+        if img_bgr is None:
+            return
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb).resize((600, 600))
         img_tk = ImageTk.PhotoImage(img_pil)
@@ -173,26 +111,70 @@ def preview_carousel(images):
             idx[0] -= 1
             update_image()
 
-    def save_all():
-        tag = simpledialog.askstring("Name Photos", "Enter prefix/tag for photos (e.g. item123):")
-        if tag:
-            for i, path in enumerate(images):
-                ext = os.path.splitext(path)[1]
-                new_name = f"{tag}_{i+1:02d}{ext}"
-                new_path = os.path.join(SAVE_DIR, new_name)
-                os.rename(path, new_path)
-                process_image(new_path)
-        win.destroy()
-        messagebox.showinfo("Saved", "✅ Photos saved and renamed.")
-
-    def discard_all():
-        for path in images:
+    def delete_photo():
+        path = images.pop(idx[0])
+        if os.path.exists(path):
             os.remove(path)
-        win.destroy()
-        messagebox.showinfo("Discarded", "🗑️ Photos discarded.")
+        if not images:
+            win.destroy()
+            return
+        if idx[0] >= len(images):
+            idx[0] = len(images) - 1
+        update_image()
+
+    def select_photo():
+        if images[idx[0]] not in selected_photos:
+            selected_photos.append(images[idx[0]])
+        messagebox.showinfo("Selected", "Photo added to export list.")
+
+    def go_to_index():
+        try:
+            value = int(simpledialog.askstring("Go to Photo", f"Enter photo number (1-{len(images)}):"))
+            if 1 <= value <= len(images):
+                idx[0] = value - 1
+                update_image()
+        except:
+            pass
+
+    def export_photos(photos):
+        folder = filedialog.askdirectory(title="Select Export Folder")
+        if not folder:
+            return
+        exported = 0
+        for path in photos:
+            name = os.path.basename(path)
+            dest_path = os.path.join(folder, name)
+            if os.path.exists(dest_path):
+                continue
+            try:
+                img = Image.open(path)
+                for orientation in ExifTags.TAGS.keys():
+                    if ExifTags.TAGS[orientation] == 'Orientation':
+                        break
+                exif = img._getexif()
+                if exif is not None:
+                    orientation_value = exif.get(orientation, None)
+                    if orientation_value == 3:
+                        img = img.rotate(180, expand=True)
+                    elif orientation_value == 6:
+                        img = img.rotate(270, expand=True)
+                    elif orientation_value == 8:
+                        img = img.rotate(90, expand=True)
+                img = img.convert("RGB")
+                img.save(dest_path)
+                exported += 1
+            except:
+                continue
+        messagebox.showinfo("Export Complete", f"Saved {exported} photo(s).")
+
+    def export_selected():
+        export_photos(selected_photos)
+
+    def export_all():
+        export_photos(images)
 
     win = tk.Toplevel()
-    win.title("Photo Carousel")
+    win.title("View Photos")
     panel = tk.Label(win)
     panel.pack()
 
@@ -204,38 +186,35 @@ def preview_carousel(images):
 
     tk.Button(btn_frame, text="⏪ Prev", command=prev_img).grid(row=0, column=0, padx=10)
     tk.Button(btn_frame, text="⏩ Next", command=next_img).grid(row=0, column=1, padx=10)
-    tk.Button(btn_frame, text="📀 Save All", command=save_all).grid(row=1, column=0, pady=10)
-    tk.Button(btn_frame, text="❌ Discard All", command=discard_all).grid(row=1, column=1, pady=10)
+    tk.Button(btn_frame, text="🗑 Delete", command=delete_photo).grid(row=1, column=0, columnspan=2, pady=5)
+    tk.Button(btn_frame, text="✅ Select", command=select_photo).grid(row=2, column=0, columnspan=2, pady=5)
+    tk.Button(btn_frame, text="🔢 Go to #", command=go_to_index).grid(row=3, column=0, columnspan=2, pady=5)
+    tk.Button(btn_frame, text="💾 Export Selected", command=export_selected).grid(row=4, column=0, columnspan=2, pady=5)
+    tk.Button(btn_frame, text="📤 Export All", command=export_all).grid(row=5, column=0, columnspan=2, pady=10)
 
     update_image()
     win.mainloop()
 
-# ---------- Event Handlers ----------
+# ---------- Handlers ----------
 def take_photo():
-    launch_camera_and_snap()
-    path = pull_latest_photo()
-    if path:
-        captured_photos.append(path)
-        print(f"✅ Photo captured: {path}")
-    else:
-        print("⚠️ No new photo captured.")
+    trigger_camera()
+    time.sleep(0.5)
+    photos = list_photos()
+    if photos:
+        path = pull_photo(photos[0], SAVE_DIR)
+        messagebox.showinfo("Saved", f"Photo saved to: {path}")
 
-def finish_session():
-    if not captured_photos:
-        messagebox.showinfo("Info", "No photos captured.")
-        return
-    preview_carousel(captured_photos)
-    root.destroy()
-
-# ---------- System Preferences ---------
-def choose_save_directory():
+def set_save_dir():
     global SAVE_DIR
-    selected_dir = filedialog.askdirectory(title="Select Save Folder")
-    if selected_dir:
-        SAVE_DIR = selected_dir
-        messagebox.showinfo("Folder Set", f"📂 Photos will now be saved to:\n{SAVE_DIR}")
+    folder = filedialog.askdirectory(title="Select Save Folder")
+    if folder:
+        SAVE_DIR = folder
+        messagebox.showinfo("Set", f"Save folder set to: {SAVE_DIR}")
 
-# ---------- System Config ----------
+def view_all_photos():
+    imgs = pull_all_photos()
+    preview_carousel(imgs)
+
 def connect_wirelessly():
     confirm = messagebox.askyesno(
         "USB Connection Required",
@@ -248,53 +227,34 @@ def connect_wirelessly():
         ip_output = subprocess.check_output(["adb", "shell", "ip", "route"], text=True)
         ip_address = ip_output.split("src")[-1].strip().split()[0]
 
-        subprocess.run(["adb", "tcpip", "5555"], check=True)
+        subprocess.run([tool_path("adb.exe"), "tcpip", "5555"], check=True)
         time.sleep(1)
 
-        subprocess.run(["adb", "connect", ip_address], check=True)
+        subprocess.run([tool_path("adb.exe"), "connect", ip_address], check=True)
         messagebox.showinfo("Connected", f"📡 Connected wirelessly to {ip_address}")
     except Exception as e:
         messagebox.showerror("Wireless Error", f"❌ Failed to connect wirelessly:\n{e}")
 
-# ---------- Applications ----------
-def open_camera_app():
-    try:
-        subprocess.run(["adb", "shell", "am", "start", "-n", "com.sec.android.app.camera/.Camera"])
-    except Exception as e:
-        messagebox.showerror("Camera Error", f"Failed to open camera: {e}")
-
 
 # ---------- GUI Setup ----------
-initial_files = list_photos()
-root = tk.Tk()
-root.title("Samsung Camera Capture Tool")
-root.geometry("300x450")
-root.attributes('-topmost', True)  # Always on top
-root.protocol("WM_DELETE_WINDOW", quit_app)
-
-# Frame for the buttons in grid layout
 button_frame = tk.Frame(root)
 button_frame.pack(expand=True)
 
-# Define buttons and their grid positions
 buttons = [
-    ("📱 Open Camera App", open_camera_app),
+    ("📶 Connect Wirelessly", connect_wirelessly),
+    ("📱 Open Camera App", launch_camera_app),
     ("📸 Take Photo", take_photo),
-    ("✅ Finish & Preview", finish_session),
-    ("👁️ Standard View", start_standard_view),
-    ("🔎 Advanced View", start_advanced_view),
-    ("📂 Set Save Folder", choose_save_directory),
-    ("📷 Pull All Photos", pull_photos_from_phone),
-    ("📡 Connect Wirelessly", connect_wirelessly),
+    ("👁️ Live View", start_standard_view),
+    ("🖼 View All Phone Photos", view_all_photos),
+    ("📂 Set Save Folder", set_save_dir),
     ("❎ Quit App", quit_app),
 ]
 
-# Place buttons in two columns
-for i, (text, cmd) in enumerate(buttons):
+
+for i, (label, func) in enumerate(buttons):
     row = i // 2
     col = i % 2
-    btn = tk.Button(button_frame, text=text, command=cmd, height=2, width=16)
+    btn = tk.Button(button_frame, text=label, command=func, height=2, width=16)
     btn.grid(row=row, column=col, padx=5, pady=5)
-
 
 root.mainloop()
